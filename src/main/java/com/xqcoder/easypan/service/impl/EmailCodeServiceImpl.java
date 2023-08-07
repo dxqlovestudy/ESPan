@@ -140,20 +140,46 @@ public class EmailCodeServiceImpl implements EmailCodeService {
 
     @Override
     public void sendEmailCode(String toEmail, Integer type) {
+        /**
+         * @description: 发送邮件，调用另外一个sendEmailCode(String toEmail, String code)方法发送邮件。
+         *                并且将邮件相关信息存到email_code表中
+         * @param toEmail 发送的目的邮箱
+         * @param type 0为注册功能，1为忘记功能
+         * @return void
+         * @author: HuaXian
+         * @date: 2023/8/7 13:43
+         */
+        // 如果是注册type=0，校验邮箱是否存在
         if (type == Constants.ZERO) {
             UserInfo userInfo = userInfoMapper.selectByEmail(toEmail);
             if (null != userInfo) {
                 throw new BusinessException("邮箱已存在");
             }
         }
+        // 创建随机的5位校验数
         String code = StringTools.getRandomNumber(Constants.LENGTH_5);
+        // 调用另外一个真正发送验证码的方法
         sendEmailCode(toEmail, code);
 
+        // emailCode存到数据库email_code表中
         emailCodeMapper.disableEmailCode(toEmail);
-
+        EmailCode emailCode = new EmailCode();
+        emailCode.setCode(code);
+        emailCode.setEmail(toEmail);
+        emailCode.setStatus(Constants.ZERO);
+        emailCode.setCreateTime(new Date());
+        emailCodeMapper.insert(emailCode);
     }
 
     public void sendEmailCode(String toEmail, String code) {
+        /**
+         * @description: 发送邮件功能
+         * @param toEmail   目的邮箱
+         * @param code  验证码
+         * @return void
+         * @author: HuaXian
+         * @date: 2023/8/7 13:52
+         */
         try {
             MimeMessage message = javaMailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
@@ -163,7 +189,6 @@ public class EmailCodeServiceImpl implements EmailCodeService {
             helper.setTo(toEmail);
 
             SysSettingsDto sysSettingsDto = redisComponent.getSysSettingsDto();
-
             // 邮件主题
             helper.setSubject(sysSettingsDto.getRegisterEmailTitle());
             //邮件内容
@@ -174,5 +199,18 @@ public class EmailCodeServiceImpl implements EmailCodeService {
             logger.error("邮件发送失败", e);
             throw new BusinessException("邮件发送失败");
         }
+    }
+
+    @Override
+    public void checkCode(String email, String code) {
+        EmailCode emailCode = emailCodeMapper.selectByEmailAndCode(email, code);
+        if (null == emailCode) {
+            throw new BusinessException("邮箱验证码不正确");
+        }
+        if (emailCode.getStatus() == 1 || System.currentTimeMillis() - emailCode.getCreateTime().getTime()
+                > Constants.LENGTH_15 * 1000 * 60) {
+            throw new BusinessException("邮箱验证码已失效");
+        }
+        emailCodeMapper.disableEmailCode(email);
     }
 }

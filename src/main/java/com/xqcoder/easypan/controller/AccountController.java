@@ -32,7 +32,7 @@ public class AccountController extends ABaseController{
          * @description: 获取验证码
          * @param response
          * @param session
-         * @param type
+         * @param type 为null或者0的时候是登录功能、找回密码，为1或其他是注册时的邮箱验证码
          * @return void
          * @author: HuaXian
          * @date: 2023/8/6 14:29
@@ -53,6 +53,17 @@ public class AccountController extends ABaseController{
 
     @RequestMapping("/sendEmailCode")
     public ResponseVO sendEmailCode(HttpSession session, String email, String checkCode, Integer type) {
+        /**
+         * @description: 注册功能中的发送邮箱验证码
+         * @param session
+         * @param email
+         * @param checkCode
+         * @param type 为0是注册，为1是找回密码
+         * @return com.xqcoder.easypan.entity.vo.ResponseVO
+         * @author: HuaXian
+         * @date: 2023/8/7 9:19
+         */
+        // TODO 图片验证码没有忽视大小写，找找原因
         try {
             if (!checkCode.equalsIgnoreCase((String) session.getAttribute(Constants.CHECK_CODE_KEY_EMAIL))) {
                 throw new BusinessException("图片验证码不正确");
@@ -62,6 +73,31 @@ public class AccountController extends ABaseController{
         } finally {
             session.removeAttribute(Constants.CHECK_CODE_KEY_EMAIL);
         }
+    }
 
+    @RequestMapping("/register")
+    public ResponseVO register(HttpSession session, String email, String nickName, String password, String checkCode,
+                               String emailCode) {
+        /**
+         * @description: 注册
+         * @param session
+         * @param email
+         * @param nickName
+         * @param password
+         * @param checkCode
+         * @param emailCode
+         * @return com.xqcoder.easypan.entity.vo.ResponseVO
+         * @author: HuaXian
+         * @date: 2023/8/7 9:20
+         */
+        try {
+            if (!checkCode.equalsIgnoreCase((String) session.getAttribute(Constants.CHECK_CODE_KEY))) {
+                throw new BusinessException("图片验证码不正确");
+            }
+            userInfoService.register(email, nickName, password, emailCode);
+            return getSuccessResponseVO(null);
+        } finally {
+            session.removeAttribute(Constants.CHECK_CODE_KEY);
+        }
     }
 }

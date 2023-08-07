@@ -59,4 +59,5 @@ public interface EmailCodeService {
     Integer deleteEmailCodeByEmailAndCode(String email, String code);
     public void sendEmailCode(String toEmail, Integer type);
 
+    void checkCode(String email, String code);
 }
