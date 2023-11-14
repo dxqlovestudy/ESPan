@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import javax.mail.MessagingException;
@@ -139,6 +140,7 @@ public class EmailCodeServiceImpl implements EmailCodeService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void sendEmailCode(String toEmail, Integer type) {
         /**
          * @description: 发送邮件，调用另外一个sendEmailCode(String toEmail, String code)方法发送邮件。
@@ -161,7 +163,7 @@ public class EmailCodeServiceImpl implements EmailCodeService {
         // 调用另外一个真正发送验证码的方法
         sendEmailCode(toEmail, code);
 
-        // emailCode存到数据库email_code表中
+        // 将之前的验证码置为无效（status1）
         emailCodeMapper.disableEmailCode(toEmail);
         EmailCode emailCode = new EmailCode();
         emailCode.setCode(code);
@@ -171,15 +173,16 @@ public class EmailCodeServiceImpl implements EmailCodeService {
         emailCodeMapper.insert(emailCode);
     }
 
+    /**
+     * @description: 发送邮件功能
+     * @param toEmail   目的邮箱
+     * @param code  验证码
+     * @return void
+     * @author: HuaXian
+     * @date: 2023/8/7 13:52
+     */
     public void sendEmailCode(String toEmail, String code) {
-        /**
-         * @description: 发送邮件功能
-         * @param toEmail   目的邮箱
-         * @param code  验证码
-         * @return void
-         * @author: HuaXian
-         * @date: 2023/8/7 13:52
-         */
+
         try {
             MimeMessage message = javaMailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true);
@@ -192,7 +195,8 @@ public class EmailCodeServiceImpl implements EmailCodeService {
             // 邮件主题
             helper.setSubject(sysSettingsDto.getRegisterEmailTitle());
             //邮件内容
-            helper.setText(sysSettingsDto.getRegisterEmailContent(), code);
+//            helper.setText(String.format(sysSettingsDto.getRegisterEmailContent()), code);
+            helper.setText(String.format(sysSettingsDto.getRegisterEmailContent(), code));
             helper.setSentDate(new Date());
             javaMailSender.send(message);
         } catch (Exception e) {

@@ -2,6 +2,8 @@ package com.xqcoder.easypan.service.impl;
 
 import com.xqcoder.easypan.component.RedisComponent;
 import com.xqcoder.easypan.constants.Constants;
+import com.xqcoder.easypan.entity.config.AppConfig;
+import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
 import com.xqcoder.easypan.entity.dto.SysSettingsDto;
 import com.xqcoder.easypan.entity.enums.UserStatusEnum;
 import com.xqcoder.easypan.entity.po.UserInfo;
@@ -11,11 +13,13 @@ import com.xqcoder.easypan.mappers.UserInfoMapper;
 import com.xqcoder.easypan.service.EmailCodeService;
 import com.xqcoder.easypan.service.UserInfoService;
 import com.xqcoder.easypan.utils.StringTools;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.util.Date;
+import java.util.List;
 
 /**
  * 用户信息(UserInfo)表服务实现类
@@ -32,6 +36,8 @@ public class UserInfoServiceImpl implements UserInfoService {
     private EmailCodeService emailCodeService;
     @Resource
     private RedisComponent redisComponent;
+    @Resource
+    private AppConfig appConfig;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -60,6 +66,47 @@ public class UserInfoServiceImpl implements UserInfoService {
         userInfo.setTotalSpace(sysSettingsDto.getUserInitUseSpace() * Constants.MB);
         userInfo.setUseSpace(0L);
         this.userInfoMapper.insert(userInfo);
+    }
+
+    @Override
+    public SessionWebUserDto login(String email, String password) {
+
+        // 使用selectByEmail通过email查询用户信息存储到userInfo中
+        UserInfo userInfo = this.userInfoMapper.selectByEmail(email);
+        // 如果userInfo为空或者密码不正确，抛出异常
+        // 前端已经对输入的password进行了MD5加密，所以这里不需要对password进行MD5加密
+        if (null == userInfo || !userInfo.getPassword().equals(password)) {
+            throw new BusinessException("账号或者密码错误");
+        }
+        // 如果用户状态为禁用0，抛出异常
+        if (UserStatusEnum.DISABLE.getStatus().equals(userInfo.getStatus())) {
+            throw new BusinessException("账号已禁用");
+        }
+        // 更新用户最后登录时间
+        UserInfo updateInfo = new UserInfo();
+        updateInfo.setLastLoginTime(new Date());
+        this.userInfoMapper.updateByUserId(updateInfo, userInfo.getUserId());
+        // 将用户信息存储到sessionWebUserDto中
+        SessionWebUserDto sessionWebUserDto = new SessionWebUserDto();
+        sessionWebUserDto.setNickName(userInfo.getNickName());
+        sessionWebUserDto.setUserId(userInfo.getUserId());
+        // 判断用户是否为管理员,从管理员邮箱列表中获取管理员邮箱，然后判断用户邮箱是否在管理员邮箱列表中
+        if (ArrayUtils.contains(appConfig.getAdminEmails().split(","), email)) {
+            sessionWebUserDto.setIsAdmin(true);
+        } else {
+            sessionWebUserDto.setIsAdmin(false);
+        }
+        // 获取用户云存储空间信息
+//        UserSpaceDto userSpaceDto = new UserSpaceDto();
+//        userSpaceDto.setUseSpace();
+
+        return sessionWebUserDto;
+    }
+
+    @Override
+    public List<UserInfo> findListByParam(UserInfoQuery userInfoQuery) {
+
+        return null;
     }
 }
 

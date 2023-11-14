@@ -29,9 +29,6 @@ public class AppConfig {
     @Value("${admin.emails:}")
     private String adminEmails;
 
-    public String getAdminEmails() {
-        return adminEmails;
-    }
 
     @Value("${dev:false}")
     private Boolean dev;

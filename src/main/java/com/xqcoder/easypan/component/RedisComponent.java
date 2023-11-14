@@ -14,7 +14,7 @@ public class RedisComponent {
 
     public SysSettingsDto getSysSettingsDto() {
         /**
-         * @description: 获取系统设置
+         * @description: 将一些用户信息存放到Redis中
          * @param
          * @return com.xqcoder.easypan.entity.dto.SysSettingsDto
          * @author: HuaXian
@@ -27,6 +27,5 @@ public class RedisComponent {
         }
         return sysSettingsDto;
     }
-
 
 }
