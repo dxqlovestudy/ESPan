@@ -1,0 +1,103 @@
+# 应用服务器 WEB访问端口
+server:
+  port: 7090
+  servlet:
+    # 定义默认根据路径为 /api
+    context-path: /api
+    # session过期时间为60M 一个小时
+    session:
+      timeout: PT60M
+
+spring:
+  mvc:
+    # 将默认的icon图标关闭
+    favicon:
+      enabled: false
+
+      # 异常处理：如果没有handler就抛出异常
+    throw-exception-if-no-handler-found: true
+
+  # 添加默认的静态资源隐射设置为false，意味着/resources/static、/static、/public、/resources、/META-INF/resources、/resources/static、/favicon.ico不会被当做静态资源处理
+  web:
+    resources:
+      add-mappings: false
+  # 数据库配置
+  datasource:
+    # MySQL一些参数设置
+    url: jdbc:mysql://127.0.0.1:3306/easypan?serverTimezone=GMT%2B8&useUnicode=true&characterEncoding=utf8&autoReconnect=true&allowMultiQueries=true
+    username: root
+    password: 901515
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # hikari是一个Java数据库连接池，主要是为了提高性能
+    hikari:
+      pool-name: HikariCPDatasource
+      minimum-idle: 5
+      idle-timeout: 180000
+      maximum-pool-size: 10
+      auto-commit: true
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+
+
+  # 发送邮件配置
+  mail:
+    # 配置邮件服务器的地址 smtp.qq.com
+    host: smtp.qq.com
+    # 端口为465或587
+    port: 465
+    username: 524846102@qq.com
+    password: ubepegqjkknhbidc
+    # 默认编码为UTF-8
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          # SSL连接配置
+          socketFactory:
+            class: javax.net.ssl.SSLSocketFactory
+        debug: true
+  # spring redis配置
+  redis:
+    # 表示redis数据库的第0个数据库，默认为0
+    database: 0
+    host: 127.0.0.1
+    port: 6379
+    # jedis是Java与Redis的客户端库，用于连接Redis服务器、执行Redis命令、连接池管理等操作
+    jedis:
+      pool:
+        # 连接池最大连接数（使用负值表示没有限制）
+        max-active: 20
+        # 连接池最大阻塞等待时间（使用负值表示没有限制）
+        max-wait: -1
+        # 连接池中的最大空闲连接
+        max-idle: 20
+        # 连接池中的最小空闲连接
+        min-idle: 0
+        # 连接超时时间（毫秒）
+        timeout: 2000
+
+project:
+  folder: D:/Java_Item/ESPan/
+log:
+  root:
+    level: debug
+# 超级管理员id
+admin:
+  emails: 524846102@qq.com
+dev: false
+# qq登录相关
+qq:
+  app:
+    id: 12333
+    key: 2222222
+  url:
+    authorization: https://graph.qq.com/oauth2.0/authorize?response_type=code&client_id=%s&redirect_uri=%s&state=%s
+    access:
+      token: https://graph.qq.com/oauth2.0/token?grant_type=authorization_code&client_id=%s&client_secret=%s&code=%s&redirect_uri=%s
+    openid: https://graph.qq.com/oauth2.0/me?access_token=%S
+    user:
+      info: https://graph.qq.com/user/get_user_info?access_token=%s&oauth_consumer_key=%s&openid=%s
+    redirect: http://easypan.wuhancoder.com/qqlogincalback
+
+

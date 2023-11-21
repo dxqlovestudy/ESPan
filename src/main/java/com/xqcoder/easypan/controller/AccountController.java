@@ -1,6 +1,7 @@
 package com.xqcoder.easypan.controller;
 
 import com.xqcoder.easypan.annotation.GlobalInterceptor;
+import com.xqcoder.easypan.component.RedisComponent;
 import com.xqcoder.easypan.constants.Constants;
 import com.xqcoder.easypan.entity.config.AppConfig;
 import com.xqcoder.easypan.entity.dto.CreateImageCode;
@@ -35,6 +36,8 @@ public class AccountController extends ABaseController{
 
     @Autowired
     private AppConfig appConfig;
+    @Autowired
+    private RedisComponent redisComponent;
 
     @GetMapping(value = "/checkCode")
     public void checkCode(HttpServletResponse response, HttpSession session, Integer type) throws
@@ -151,7 +154,6 @@ public class AccountController extends ABaseController{
      * @author: HuaXian
      * @date: 2023/11/14 15:07
      */
-    // TODO getAvatar接口未测试
     @RequestMapping("/getAvatar/{userId}")
     // 检查登录设置为false、检查参数设置为true，可以去看GlobalInterceptor注解，然后利用AOP切入check方法的具体实现。
     @GlobalInterceptor(checkLogin = false, checkParams = true)
@@ -179,7 +181,6 @@ public class AccountController extends ABaseController{
         response.setContentType("image/jpg");
         readFile(response, avatarPath);
     }
-
     private void printNoDefaultImage(HttpServletResponse response) {
         response.setHeader(CONTENT_TYPE, CONTENT_TYPE_VALUE);
         response.setStatus(HttpStatus.OK.value());
@@ -194,4 +195,19 @@ public class AccountController extends ABaseController{
             writer.close();
         }
     }
+
+    // 获取用户使用空间
+    @RequestMapping("/getUseSpace")
+    @GlobalInterceptor
+    public ResponseVO getUseSpace(HttpSession session) {
+        SessionWebUserDto sessionWebUserDto = getUserInfoFromSession(session);
+        return getSuccessResponseVO(redisComponent.getUserSpaceUse(sessionWebUserDto.getUserId()));
+    }
+
+    @RequestMapping("/logout")
+    public ResponseVO logout(HttpSession session) {
+        session.invalidate();
+        return getSuccessResponseVO(null);
+    }
+
 }
