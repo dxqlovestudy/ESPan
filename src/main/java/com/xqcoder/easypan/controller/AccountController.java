@@ -1,16 +1,19 @@
 package com.xqcoder.easypan.controller;
 
 import com.xqcoder.easypan.annotation.GlobalInterceptor;
+import com.xqcoder.easypan.annotation.VerifyParam;
 import com.xqcoder.easypan.component.RedisComponent;
 import com.xqcoder.easypan.constants.Constants;
 import com.xqcoder.easypan.entity.config.AppConfig;
 import com.xqcoder.easypan.entity.dto.CreateImageCode;
 import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
+import com.xqcoder.easypan.entity.enums.VerifyRegexEnum;
 import com.xqcoder.easypan.entity.po.UserInfo;
 import com.xqcoder.easypan.entity.vo.ResponseVO;
 import com.xqcoder.easypan.exception.BusinessException;
 import com.xqcoder.easypan.service.EmailCodeService;
 import com.xqcoder.easypan.service.UserInfoService;
+import com.xqcoder.easypan.utils.StringTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -248,7 +251,6 @@ public class AccountController extends ABaseController{
         } catch (Exception e) {
             logger.error("上传头像失败", e);
         }
-
         // 更新用户头像
         UserInfo userInfo = new UserInfo();
         // 将qqavatar设置为空
@@ -259,6 +261,26 @@ public class AccountController extends ABaseController{
         webUserDto.setAvatar(null);
         // 将更新后的session重新放入session中
         session.setAttribute(Constants.SESSION_KEY, webUserDto);
+        return getSuccessResponseVO(null);
+    }
+
+    /**
+     * @description: 修改密码
+     * @param session
+     * @param password
+     * @return com.xqcoder.easypan.entity.vo.ResponseVO
+     * @author: HuaXian
+     * @date: 2023/11/22 15:52
+     */
+    @RequestMapping("/updatePassword")
+    @GlobalInterceptor(checkParams = true)
+    // 校验参数，正则表达式为密码，最小长度为8，最大长度为18
+    public ResponseVO updatePassword(HttpSession session,
+                                     @VerifyParam(required = true, regex = VerifyRegexEnum.PASSWORD, min = 8, max = 18) String password) {
+        SessionWebUserDto webUserDto = getUserInfoFromSession(session);
+        UserInfo userInfo = new UserInfo();
+        userInfo.setPassword(StringTools.encodeByMD5(password));
+        userInfoService.updateUserInfoByUserId(userInfo, webUserDto.getUserId());
         return getSuccessResponseVO(null);
     }
 }
