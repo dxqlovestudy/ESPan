@@ -8,8 +8,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-//import com.baomidou.mybatisplus.annotation.TableId;
-//import com.baomidou.mybatisplus.annotation.TableName;
 /**
  * 用户信息(UserInfo)表实体类
  *

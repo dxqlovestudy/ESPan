@@ -108,5 +108,10 @@ public class UserInfoServiceImpl implements UserInfoService {
 
         return null;
     }
+
+    @Override
+    public Integer updateUserInfoByUserId(UserInfo bean, String userId) {
+        return this.userInfoMapper.updateByUserId(bean, userId);
+    }
 }
 

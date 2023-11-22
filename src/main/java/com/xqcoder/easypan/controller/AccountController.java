@@ -6,6 +6,7 @@ import com.xqcoder.easypan.constants.Constants;
 import com.xqcoder.easypan.entity.config.AppConfig;
 import com.xqcoder.easypan.entity.dto.CreateImageCode;
 import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
+import com.xqcoder.easypan.entity.po.UserInfo;
 import com.xqcoder.easypan.entity.vo.ResponseVO;
 import com.xqcoder.easypan.exception.BusinessException;
 import com.xqcoder.easypan.service.EmailCodeService;
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
@@ -204,10 +206,59 @@ public class AccountController extends ABaseController{
         return getSuccessResponseVO(redisComponent.getUserSpaceUse(sessionWebUserDto.getUserId()));
     }
 
+    /**
+     * @description: 退出登录功能
+     * @param session
+     * @return com.xqcoder.easypan.entity.vo.ResponseVO
+     * @author: HuaXian
+     * @date: 2023/11/21 21:49
+     */
     @RequestMapping("/logout")
     public ResponseVO logout(HttpSession session) {
+        // 退出登录，清除session
         session.invalidate();
         return getSuccessResponseVO(null);
     }
 
+    /**
+     * @description:  更新用户头像
+     * @param session
+     * @param avatar
+     * @return com.xqcoder.easypan.entity.vo.ResponseVO
+     * @author: HuaXian
+     * @date: 2023/11/22 14:26
+     */
+    @RequestMapping("updateUserAvatar")
+    @GlobalInterceptor
+    public ResponseVO updateUserAvatar(HttpSession session, MultipartFile avatar) {
+        // 从session中获取用户信息
+        SessionWebUserDto webUserDto = getUserInfoFromSession(session);
+        // 获取文件夹路径
+        String baseFolder = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE;
+        // 判断文件夹是否存在，不存在则创建
+        File targetFileFolder = new File(baseFolder + Constants.FILE_FOLDER_AVATAR_NAME);
+        if (!targetFileFolder.exists()) {
+            targetFileFolder.mkdir();
+        }
+        // 获取头像文件
+        File targetfile = new File(targetFileFolder.getPath() + "/" + webUserDto.getUserId() + Constants.AVATAR_SUFFIX);
+        try {
+            // 将avatar文件写入targetfile,写入目标文件里面既可，因为用户登录的时候会有逻辑去获取对应目录获取对应的头像
+            avatar.transferTo(targetfile);
+        } catch (Exception e) {
+            logger.error("上传头像失败", e);
+        }
+
+        // 更新用户头像
+        UserInfo userInfo = new UserInfo();
+        // 将qqavatar设置为空
+        userInfo.setQqAvatar("");
+        // 更新数据库，将userInfo的qqAvatar设置为空
+        userInfoService.updateUserInfoByUserId(userInfo, webUserDto.getUserId());
+        // 更新session中的头像,将原来session中的头像设置为空，后面会重新获取
+        webUserDto.setAvatar(null);
+        // 将更新后的session重新放入session中
+        session.setAttribute(Constants.SESSION_KEY, webUserDto);
+        return getSuccessResponseVO(null);
+    }
 }

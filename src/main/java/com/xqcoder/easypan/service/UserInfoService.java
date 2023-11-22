@@ -20,5 +20,7 @@ public interface UserInfoService {
     SessionWebUserDto login(String email, String password);
 
     List<UserInfo> findListByParam(UserInfoQuery userInfoQuery);
+
+    Integer updateUserInfoByUserId(UserInfo bean, String userId);
 }
 
