@@ -5,9 +5,12 @@ import com.xqcoder.easypan.constants.Constants;
 import com.xqcoder.easypan.entity.config.AppConfig;
 import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
 import com.xqcoder.easypan.entity.dto.SysSettingsDto;
+import com.xqcoder.easypan.entity.enums.PageSize;
 import com.xqcoder.easypan.entity.enums.UserStatusEnum;
 import com.xqcoder.easypan.entity.po.UserInfo;
+import com.xqcoder.easypan.entity.query.SimplePage;
 import com.xqcoder.easypan.entity.query.UserInfoQuery;
+import com.xqcoder.easypan.entity.vo.PaginationResultVO;
 import com.xqcoder.easypan.exception.BusinessException;
 import com.xqcoder.easypan.mappers.UserInfoMapper;
 import com.xqcoder.easypan.service.EmailCodeService;
@@ -104,14 +107,42 @@ public class UserInfoServiceImpl implements UserInfoService {
     }
 
     @Override
-    public List<UserInfo> findListByParam(UserInfoQuery userInfoQuery) {
-
-        return null;
+    public List<UserInfo> findListByParam(UserInfoQuery param) {
+        return this.userInfoMapper.selectList(param);
     }
 
     @Override
     public Integer updateUserInfoByUserId(UserInfo bean, String userId) {
         return this.userInfoMapper.updateByUserId(bean, userId);
+    }
+
+    /**
+     * @description:  分页查询
+     * @param param
+     * @return com.xqcoder.easypan.entity.vo.PaginationResultVO<com.xqcoder.easypan.entity.po.UserInfo>
+     * @author: HuaXian
+     * @date: 2023/11/23 14:47
+     */
+    @Override
+    public PaginationResultVO<UserInfo> findListByPage(UserInfoQuery param) {
+        // 查询总数
+        int count = this.findCountByParam(param);
+        // 如果pageSize为空，设置默认值,否则使用传入的pageSize
+        int pageSize = param.getPageSize() == null ? PageSize.SIZE15.getSize() : param.getPageSize();
+        // 创建分页对象
+        SimplePage page = new SimplePage(param.getPageNo(), count, pageSize);
+        // 设置分页参数
+        param.setSimplePage(page);
+        // 查询列表
+        List<UserInfo> list = findListByParam(param);
+        // 创建分页结果对象
+        PaginationResultVO<UserInfo> result = new PaginationResultVO<>(count, page.getPageSize(), page.getPageNo(), page.getPageTotal(), list);
+        return result;
+    }
+
+    @Override
+    public Integer findCountByParam(UserInfoQuery param) {
+        return this.userInfoMapper.selectCount(param);
     }
 }
 

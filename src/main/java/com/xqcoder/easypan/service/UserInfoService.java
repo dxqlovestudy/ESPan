@@ -4,6 +4,7 @@ package com.xqcoder.easypan.service;
 import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
 import com.xqcoder.easypan.entity.po.UserInfo;
 import com.xqcoder.easypan.entity.query.UserInfoQuery;
+import com.xqcoder.easypan.entity.vo.PaginationResultVO;
 
 import java.util.List;
 
@@ -22,5 +23,9 @@ public interface UserInfoService {
     List<UserInfo> findListByParam(UserInfoQuery userInfoQuery);
 
     Integer updateUserInfoByUserId(UserInfo bean, String userId);
+
+    PaginationResultVO<UserInfo> findListByPage(UserInfoQuery param);
+
+    Integer findCountByParam(UserInfoQuery param);
 }
 
