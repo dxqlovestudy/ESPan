@@ -1,9 +1,11 @@
 package com.xqcoder.easypan.service;
 
+import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
+import com.xqcoder.easypan.entity.dto.UploadResultDto;
+import com.xqcoder.easypan.entity.po.FileInfo;
 import com.xqcoder.easypan.entity.query.FileInfoQuery;
 import com.xqcoder.easypan.entity.vo.PaginationResultVO;
 import org.apache.ibatis.annotations.Param;
-import org.apache.tomcat.jni.FileInfo;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -22,4 +24,8 @@ public interface FileInfoService {
     int findCountByParam(FileInfoQuery param);
 
     List<FileInfo> findListByParam(FileInfoQuery param);
+
+    UploadResultDto uploadFile(SessionWebUserDto webUserDto, String fileId, MultipartFile file, String fileName, String filePid, String fileMd5, Integer chunkIndex, Integer chunks);
+
+    void transferFile(String fileId, SessionWebUserDto webUserDto);
 }

@@ -1,6 +1,9 @@
 package com.xqcoder.easypan.controller;
 
 import com.xqcoder.easypan.annotation.GlobalInterceptor;
+import com.xqcoder.easypan.annotation.VerifyParam;
+import com.xqcoder.easypan.entity.dto.SessionWebUserDto;
+import com.xqcoder.easypan.entity.dto.UploadResultDto;
 import com.xqcoder.easypan.entity.enums.FileCategoryEnums;
 import com.xqcoder.easypan.entity.enums.FileDelFlagEnums;
 import com.xqcoder.easypan.entity.query.FileInfoQuery;
@@ -9,6 +12,7 @@ import com.xqcoder.easypan.entity.vo.PaginationResultVO;
 import com.xqcoder.easypan.entity.vo.ResponseVO;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpSession;
 
@@ -37,5 +41,19 @@ public class FileInfoController extends CommonFileController{
         query.setDelFlag(FileDelFlagEnums.USING.getFlag());
         PaginationResultVO result = fileInfoService.findListByPage(query);
         return getSuccessResponseVO(convert2PaginationVO(result, FileInfoVO.class));
+    }
+    @RequestMapping("/uploadFile")
+    @GlobalInterceptor(checkParams = true)
+    public ResponseVO uploadFile(HttpSession session,
+                                 String fileId,
+                                 MultipartFile file,
+                                 @VerifyParam(required = true) String fileName,
+                                 @VerifyParam(required = true) String filePid,
+                                 @VerifyParam(required = true) String fileMd5,
+                                 @VerifyParam(required = true) Integer chunkIndex,
+                                 @VerifyParam(required = true) Integer chunks) {
+        SessionWebUserDto webUserDto = getUserInfoFromSession(session);
+        UploadResultDto resultDto = fileInfoService.uploadFile(webUserDto, fileId, file, fileName, filePid, fileMd5, chunkIndex, chunks);
+        return getSuccessResponseVO(resultDto);
     }
 }

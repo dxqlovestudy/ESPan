@@ -25,4 +25,5 @@ public class AdminController extends CommonFileController {
         PaginationResultVO<UserInfo> resultVO = userInfoService.findListByPage(userInfoQuery);
         return getSuccessResponseVO(convert2PaginationVO(resultVO, UserInfoVO.class));
     }
+
 }
