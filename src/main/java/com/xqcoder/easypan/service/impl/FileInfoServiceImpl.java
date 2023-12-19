@@ -19,10 +19,14 @@ import com.xqcoder.easypan.mappers.UserInfoMapper;
 import com.xqcoder.easypan.service.FileInfoService;
 import com.xqcoder.easypan.service.UserInfoService;
 import com.xqcoder.easypan.utils.DateUtil;
+import com.xqcoder.easypan.utils.ProcessUtils;
+import com.xqcoder.easypan.utils.ScaleFilter;
 import com.xqcoder.easypan.utils.StringTools;
 import org.apache.commons.io.FileUtils;
+import org.apache.logging.log4j.util.ProcessIdUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -31,15 +35,18 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.util.Date;
 import java.util.List;
 
 @Service("fileInfoService")
+// TODO 这个Service得仔细琢磨一下
 public class FileInfoServiceImpl implements FileInfoService {
     private static final Logger logger = LoggerFactory.getLogger(FileInfoServiceImpl.class);
     @Resource
-    private FileInfoMapper fileInfoMapper;
+    private FileInfoMapper<FileInfo, FileInfoQuery> fileInfoMapper;
     @Resource
     private RedisComponent redisComponent;
     @Resource
@@ -195,8 +202,139 @@ public class FileInfoServiceImpl implements FileInfoService {
 
     // TODO 这个接口的实现
     @Override
+    // @Async注解表明是异步执行，创建一个新的线程去执行下面方法
+    @Async
     public void transferFile(String fileId, SessionWebUserDto webUserDto) {
+        Boolean transferSuccess = true;
+        String targetFilePath = null;
+        // 文件封面
+        String cover = null;
+        FileTypeEnums fileTypeEnum = null;
+        FileInfo fileInfo = fileInfoMapper.selectByFileIdAndUserId(fileId, webUserDto.getUserId());
+        try {
+            if (fileInfo == null || !FileStatusEnums.TRANSFER.getStatus().equals(fileInfo.getStatus())) {
+                return;
+            }
+            // 临时目录
+            String tempFolderName = appConfig.getProjectFolder() + Constants.FILE_FOLDER_TEMP;
+            String currentUserFolderName = webUserDto.getUserId() + fileId;
+            File fileFolder = new File(tempFolderName + currentUserFolderName);
+            if (!fileFolder.exists()) {
+                /**
+                 * mkdirs()和mkdir()的主要区别：主要区别是该目录的父目录是否存在。
+                 * mkdir() 如果该目录的父目录不存在，该方法将失败，不会递归创建缺失的父目录
+                 * mkdirs() 如果该目录的父目录不存在，会递归创建缺失的父目录
+                 */
+                fileFolder.mkdirs();
+            }
+            // 文件后缀
+            String fileSuffix = StringTools.getFileSuffix(fileInfo.getFileName());
+            String month = DateUtil.format(fileInfo.getCreateTime(), DateTimePatternEnum.YYYYMM.getPattern());
+            // 目标目录
+            String targetFolderName = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE;
+            File targetFolder = new File(targetFolderName + "/" + month);
+            if (! targetFolder.exists()) {
+                targetFolder.mkdirs();
+            }
+            // 真实文件名
+            String realFileName = currentUserFolderName + fileSuffix;
+            // 真实文件路径
+            targetFilePath = targetFolder.getPath() + "/" + realFileName;
+            // 合并文件
+            union(fileFolder.getPath(), targetFilePath, fileInfo.getFileName(), true);
+            // 视频文件切割
+            fileTypeEnum = FileTypeEnums.getFileTypeBySuffix(fileSuffix);
+            if (FileTypeEnums.VIDEO == fileTypeEnum) {
+                cutFile4Video(fileId, targetFilePath);
+                // 视频生成缩略图
+                cover = month + "/" + currentUserFolderName + Constants.IMAGE_PNG_SUFFIX;
+                String coverPath = targetFolderName + "/" + cover;
+                Boolean created = ScaleFilter.createThumbnailWidthFFmpeg(new File(targetFilePath), Constants.LENGTH_150, new File(coverPath), false);
+                if (!created) {
+                    FileUtils.copyFile(new File(targetFilePath), new File(coverPath));
+                }
+            }
+        } catch (Exception e) {
+            logger.error("文件转码失败，文件Id:{},userId:{}", fileId, webUserDto.getUserId(), e);
+            transferSuccess = false;
+        } finally {
+            FileInfo updateInfo = new FileInfo();
+            updateInfo.setFileSize(new File(targetFilePath).length());
+            updateInfo.setFileCover(cover);
+            updateInfo.setStatus(transferSuccess ? FileStatusEnums.USING.getStatus() : FileStatusEnums.TRANSFER_FAIL.getStatus());
+            fileInfoMapper.updateFileStatusWithOldStatus(fileId, webUserDto.getUserId(), updateInfo, FileStatusEnums.TRANSFER.getStatus());
+        }
+    }
 
+    private void cutFile4Video(String fileId, String videoFilePath) {
+        // 创建同名切片目录
+        File tsFolder = new File(videoFilePath.substring(0, videoFilePath.lastIndexOf(".")));
+        if (!tsFolder.exists()) {
+            tsFolder.mkdirs();
+        }
+        final String CMD_TRANSFER_2TS = "ffmpeg -y -i %s  -vcodec copy -acodec copy -vbsf h264_mp4toannexb %s";
+        final String CMD_CUT_TS = "ffmpeg -i %s -c copy -map 0 -f segment -segment_list %s -segment_time 30 %s/%s_%%4d.ts";
+
+        String tsPath = tsFolder + "/" + Constants.TS_NAME;
+        // 生成.ts
+        String cmd = String.format(CMD_TRANSFER_2TS, videoFilePath, tsPath);
+        ProcessUtils.executeCommand(cmd, false);
+        // 生成索引文件.m3u8和切片.ts
+        cmd = String.format(CMD_CUT_TS, tsPath, tsFolder.getPath() + "/" + Constants.M3U8_NAME, tsFolder.getPath(), fileId);
+        ProcessUtils.executeCommand(cmd, false);
+        // 删除index.ts
+        new File(tsPath).delete();
+    }
+
+    private void union(String dirPath, String toFilePath, String fileName, boolean delSource) {
+        File dir = new File(dirPath);
+        if (!dir.exists()) {
+            throw new BusinessException("目录不存在");
+        }
+        File[] fileList = dir.listFiles();
+        File targetFile = new File(toFilePath);
+        RandomAccessFile writeFile = null;
+        try {
+            writeFile = new RandomAccessFile(targetFile, "rw");
+            byte[] b = new byte[1024 * 10];
+            for (int i = 0; i < fileList.length; i++) {
+                int len = -1;
+                // 创建读块文件的对象
+                File chunkFile = new File(dirPath + File.separator + i);
+                RandomAccessFile readFile = null;
+                try {
+                    readFile = new RandomAccessFile(chunkFile, "r");
+                    while ((len = readFile.read(b)) != -1) {
+                        writeFile.write(b, 0, len);
+                    }
+                } catch (Exception e) {
+                    logger.error("合并分片失败", e);
+                    throw new BusinessException("合并文件失败");
+                } finally {
+                    readFile.close();
+                }
+            }
+        } catch (Exception e) {
+            logger.error("合并文件:{}失败", fileName, e);
+            throw new BusinessException("合并文件" + fileName + "出错了");
+        } finally {
+            try {
+                if (null != writeFile) {
+                    writeFile.close();
+                }
+            } catch (IOException e) {
+                logger.error("关闭流失败", e);
+            }
+            if (delSource) {
+                if (dir.exists()) {
+                    try {
+                        FileUtils.deleteDirectory(dir);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
     }
 
     /**
