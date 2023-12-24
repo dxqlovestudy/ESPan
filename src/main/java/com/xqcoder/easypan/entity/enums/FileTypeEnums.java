@@ -28,6 +28,13 @@ public enum FileTypeEnums {
         this.desc = desc;
     }
 
+    /**
+     * @description: 根据文件后缀获取文件类型
+     * @param suffix 传入的文件后缀
+     * @return com.xqcoder.easypan.entity.enums.FileTypeEnums 文件类型枚举
+     * @author: HuaXian
+     * @date: 2023/12/22 15:31
+     */
     public static FileTypeEnums getFileTypeBySuffix(String suffix) {
         for (FileTypeEnums item : FileTypeEnums.values()) {
             if (ArrayUtils.contains(item.getSuffixs(), suffix)) {

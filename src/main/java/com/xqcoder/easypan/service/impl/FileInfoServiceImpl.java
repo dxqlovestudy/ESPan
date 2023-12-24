@@ -42,16 +42,20 @@ import java.util.Date;
 import java.util.List;
 
 @Service("fileInfoService")
-// TODO 这个Service得仔细琢磨一下
 public class FileInfoServiceImpl implements FileInfoService {
+    // 日志
     private static final Logger logger = LoggerFactory.getLogger(FileInfoServiceImpl.class);
     @Resource
+    // 注入fileInfoMapper,用于操作数据库
     private FileInfoMapper<FileInfo, FileInfoQuery> fileInfoMapper;
     @Resource
+    // 注入redisComponent,用于操作redis
     private RedisComponent redisComponent;
     @Resource
+    // 注入userInfoMapper,用于操作数据库
     private UserInfoMapper<UserInfo, UserInfoQuery> userInfoMapper;
     @Resource
+    // 注入appConfig,用于获取项目路径,通过@value注解获取application配置文件中的值
     private AppConfig appConfig;
     @Override
     public PaginationResultVO<FileInfo> findListByPage(FileInfoQuery param) {
@@ -75,80 +79,130 @@ public class FileInfoServiceImpl implements FileInfoService {
         return this.fileInfoMapper.selectList(param);
     }
 
+    /**
+     * @description: 上传文件功能，1.分片上传，前端调用的时候就已经将文件分片了，后端只需要将分片文件合并就可以了。
+     * @param webUserDto 传入Session中的信息
+     * @param fileId 文件id，如果是断点续传传入的FileId是一样的，如果不是断点续传，传入的FileId为空，后续方法里面会随机生成一个FileId
+     * @param file 上传的文件，MultipartFile是spring的文件上传类
+     * @param fileName 文件名
+     * @param filePid 文件父id
+     * @param fileMd5 文件md5，md5是文件的唯一标识,主要作用是用来判断文件是检验文件是否完整，防止文件上传出错。
+     * @param chunkIndex 当前分片索引，用于分片上传，每片都需要调用该方法，上传当前片
+     * @param chunks 分片总数 如果是断点续传，需要传入分片总数，否则不需要。
+     * @return com.xqcoder.easypan.entity.dto.UploadResultDto 返回上传结果，包括文件id(fileId)和上传状态(status)，上传状态有：上传中，上传完成，秒传
+     * @author: HuaXian
+     * @date: 2023/12/20 14:39
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
+    // @Transactional注解表示该方法需要事务管理，如果该方法执行失败，会回滚到执行该方法之前的状态
     public UploadResultDto uploadFile(SessionWebUserDto webUserDto, String fileId, MultipartFile file, String fileName, String filePid, String fileMd5, Integer chunkIndex, Integer chunks) {
         File tempFileFolder = null;
         Boolean uploadSuccess = true;
         try {
+            // 创建一个UploadResultDto对象，用于返回上传结果
             UploadResultDto resultDto = new UploadResultDto();
+            // 如果传入的fileId为空，随机生成一个fileId
             if (StringTools.isEmpty(fileId)) {
+                // 生成一个10位的随机字符串,包含字符和数字的随机字符串
                 fileId = StringTools.getRandomString(Constants.LENGTH_10);
             }
+            // 然后将fileId存入resultDto中
             resultDto.setFileId(fileId);
+            // 创建一个Date对象，用于获取当前时间
             Date curDate = new Date();
+            // 获取用户空间使用情况，从redis中获取，存储在UserSpaceDto对象中，传入的参数UserId从Session中获取
             UserSpaceDto spaceDto = redisComponent.getUserSpaceUse(webUserDto.getUserId());
+            // 如果是断点续传，判断文件是否存在，断点续传就不需要创建文件夹了，因为已经创建过了
+            // TODO 断点续传这里没了解清楚是继续从上次断点续传还是重新传，
+            //  1. 如果是断点续传的话，没找到续传的代码，因为没使用传入file的这个方法
+            //  如果是重新上传，为什么这里的if里面直接返回了resultDto，
+            //  2. 可能是分片上传，不确定是断点续传，断点续传是copilot自动生成的
             if (chunkIndex == 0) {
+                // 创建一个FileInfoQuery对象，里面存储文件信息的查询条件
                 FileInfoQuery infoQuery = new FileInfoQuery();
+                // 将fileMD5存入infoQuery中
                 infoQuery.setFileMd5(fileMd5);
+                // 做一个分页查询，查询第一条数据，因为mapper里面的selectList方法是查询所有符合条件的数据，所以这里做一个分页查询，查询第一条数据
                 infoQuery.setSimplePage(new SimplePage(0, 1));
+                // 设置文件状态为正在使用，FileStatusEnums.USING.getStatus()返回的是2
                 infoQuery.setStatus(FileStatusEnums.USING.getStatus());
+                // 根据infoQuery查询数据库，返回一个FileInfo对象的集合
                 List<FileInfo> dbFileList = this.fileInfoMapper.selectList(infoQuery);
                 // 秒传
+                // 如果集合不为空，说明以前上传过该文件，直接返回，实现秒传功能
                 if (!dbFileList.isEmpty()) {
+                    // 获取第一个文件信息
                     FileInfo dbFile = dbFileList.get(0);
-                    // 判断文件状态
+                    // 判断文件状态,如果文件大小+用户使用空间大小大于用户总空间大小，抛出网盘空间不足异常
                     if (dbFile.getFileSize() + spaceDto.getUseSpace() > spaceDto.getTotalSpace()) {
                         throw new BusinessException(ResponseCodeEnum.CODE_904);
                     }
+                    // 将文件Id（fileId）存入dbFile中
                     dbFile.setFileId(fileId);
+                    // 将文件父Id（filePid）存入dbFile中
                     dbFile.setFilePid(filePid);
+                    // 从session中获取用户Id，将用户Id存入dbFileo中
                     dbFile.setUserId(webUserDto.getUserId());
+                    // 将fileMd5设置为null存入dbFile中
                     dbFile.setFileMd5(null);
+                    // 将当前时间（creDate）存入dbFile中
                     dbFile.setCreateTime(curDate);
+                    // 将最后更新时间（lastUpdateTime）存入dbFile中
                     dbFile.setLastUpdateTime(curDate);
+                    // 将文件状态（status）设置为正在使用，FileStatusEnums.USING.getStatus()返回的是2
                     dbFile.setStatus(FileStatusEnums.USING.getStatus());
+                    // 将文件删除标记（delFlag）设置为正在使用，FileDelFlagEnums.USING.getFlag()返回的是2
                     dbFile.setDelFlag(FileDelFlagEnums.USING.getFlag());
+                    // 将文件类型（folderType）设置为文件，FileFolderTypeEnums.FILE.getType()返回的是1
                     dbFile.setFileMd5(fileMd5);
+                    // 根据传入参数查询数据库，如果数据库中有重名文件，自动重命名，重命名规则：文件名 + 随机字符串 + 后缀
                     fileName = autoRename(filePid, webUserDto.getUserId(), fileName);
+                    // 将文件名（fileName）存入dbFile中
                     dbFile.setFileName(fileName);
+                    // 将dbFile插入数据库
                     this.fileInfoMapper.insert(dbFile);
                     resultDto.setStatus(UploadStatusEnums.UPLOAD_SECONDS.getCode());
                     // 更新用户空间使用的大小
                     updateUserSpace(webUserDto, dbFile.getFileSize());
-
                     return resultDto;
                 }
             }
-            // 暂存在临时目录
+            // 定义临时目录路径，临时目录的路径为：配置文件中的projectFolder + Constants.FILE_FOLDER_TEMP（/temp/）
             String tempFolderName = appConfig.getProjectFolder() + Constants.FILE_FOLDER_TEMP;
+            // 当前用户目录名为：用户Id + 文件Id
             String currentUserFolderName = webUserDto.getUserId() + fileId;
-            // 创建临时目录
+            // 创建临时目录，临时目录的路径为：配置文件中的projectFolder + Constants.FILE_FOLDER_TEMP（/temp/） + currentUserFolderName(用户Id + 文件Id)
             tempFileFolder = new File(tempFolderName + currentUserFolderName);
+            // 如果临时目录不存在，创建临时目录
             if (!tempFileFolder.exists()) {
                 tempFileFolder.mkdir();
             }
-
-            // 判断磁盘空间
+            // 判断磁盘空间，从redis中获取用户临时文件大小，保存在currentTempSize中
             Long currentTempSize = redisComponent.getFileTempSize(webUserDto.getUserId(), fileId);
+            // 判断临时磁盘空间，如果文件大小 + 用户临时文件大小 + 用户使用空间大小 > 用户总空间大小，抛出网盘空间不足异常
             if (file.getSize() + currentTempSize + spaceDto.getUseSpace() > spaceDto.getTotalSpace()) {
                 throw new BusinessException(ResponseCodeEnum.CODE_904);
             }
-
+            // 创建一个临时文件，临时文件的路径为：临时目录路径（tempFileFolder，包含用户id和文件id的临时） / 当前分片索引
             File newFile = new File(tempFileFolder.getPath() + "/" + chunkIndex);
+            // 将上传的文件写入临时文件(newFile)中
             file.transferTo(newFile);
-            // 保存临时大小
+            // 将用户临时文件大小存入redis中，key为：easypan:user:file:temp:userId+fileId，value为：currentTempSize + file.getSize()
             redisComponent.saveFileTempSize(webUserDto.getUserId(), fileId, file.getSize());
             // 不是最后一个分片，直接返回
             if (chunkIndex < chunks - 1) {
                 resultDto.setStatus(UploadStatusEnums.UPLOADING.getCode());
                 return resultDto;
             }
-            // 最后一个分片上传完成，记录数据库，异步合成分片
+            // 如果能执行到这里证明是最后一个分片。最后一个分片上传完成，记录数据库，异步合成分片
+            // 将date转换为字符串，格式为：yyyyMM，传入month中
             String month = DateUtil.format(curDate, DateTimePatternEnum.YYYYMM.getPattern());
+            // 使用StringTools工具类获取文件后缀，传入fileName，返回文件后缀
             String fileSuffix = StringTools.getFileSuffix(fileName);
-            // 真实文件名
+            // 真实文件名为：用户Id + 文件Id + 文件后缀
             String realFileName = currentUserFolderName + fileSuffix;
+            // 文件类型，根据文件后缀获取文件类型，fileTypeEnum，返回文件类型
             FileTypeEnums fileTypeEnum = FileTypeEnums.getFileTypeBySuffix(fileSuffix);
             // 自动重命名
             fileName = autoRename(filePid, webUserDto.getUserId(), fileName);
@@ -200,7 +254,6 @@ public class FileInfoServiceImpl implements FileInfoService {
         }
     }
 
-    // TODO 这个接口的实现
     @Override
     // @Async注解表明是异步执行，创建一个新的线程去执行下面方法
     @Async
@@ -360,18 +413,18 @@ public class FileInfoServiceImpl implements FileInfoService {
     }
 
     /**
-     * @description: 自动重命名
+     * @description: 自动改名
      * @param filePid 文件父ID
      * @param userId 用户ID
      * @param fileName 文件名
-     * @return java.lang.String
+     * @return java.lang.String 返回改名后的文件名，如果没有重名，返回原文件名，如果有重名，返回重命名后的文件名，重命名规则：
      * @author: HuaXian
      * @date: 2023/12/18 16:47
      */
     private String autoRename(String filePid, String userId, String fileName) {
         // 创建一个FileInfoQuery对象
         FileInfoQuery fileInfoQuery = new FileInfoQuery();
-        // 设置查询条件
+        // 设置查询条件，查询条件为：用户ID（userId），文件父ID（filePid），文件删除标记（2，使用中），文件名（fileName
         fileInfoQuery.setUserId(userId);
         fileInfoQuery.setFilePid(filePid);
         fileInfoQuery.setDelFlag(FileDelFlagEnums.USING.getFlag());
@@ -380,7 +433,7 @@ public class FileInfoServiceImpl implements FileInfoService {
         Integer count = this.fileInfoMapper.selectCount(fileInfoQuery);
         // 如果数量大于0，说明有重名文件，调用StringTools的rename方法，将文件名重命名
         if (count > 0) {
-            // 重命名文件名
+            // 返回 文件名 + 随机字符串 + 后缀
             return StringTools.rename(fileName);
         }
         return fileName;

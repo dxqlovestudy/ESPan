@@ -40,9 +40,19 @@ public class StringTools {
         return fileName;
     }
 
+    /*
+     * @description: 重命名文件
+     * @param fileName 文件名
+     * @return java.lang.String 不带后缀的文件名 + 随机字符串 + 后缀
+     * @author: HuaXian
+     * @date: 2023/12/22 11:02
+     */
     public static String rename(String fileName) {
+        // 获取不带后缀的文件名
         String fileNameReal = getFileNameNoSuffix(fileName);
+        // 获取文件后缀
         String suffix = getFileSuffix(fileName);
+        // 不带后缀的文件名 + 随机字符串 + 后缀
         return fileNameReal + "_" + getRandomString(Constants.LENGTH_5) + suffix;
     }
 

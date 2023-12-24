@@ -33,7 +33,15 @@ public class RedisUtils<V> {
         }
     }
 
+    /**
+     * @description: 根据key获取value
+     * @param key 键
+     * @return V value
+     * @author: HuaXian
+     * @date: 2023/12/22 14:55
+     */
     public V get(String key) {
+        // 如果key为空，返回null,如果不为空，返回redisTemplate.opsForValue().get(key),即根据key获取value。
         return key == null ? null : redisTemplate.opsForValue().get(key);
     }
 
