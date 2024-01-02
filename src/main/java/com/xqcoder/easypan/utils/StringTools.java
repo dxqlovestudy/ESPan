@@ -21,11 +21,21 @@ public class StringTools {
         return false;
     }
 
+    /**
+     * @description: 根据文件名获取文件后缀，带“.”
+     * @param fileName 文件名
+     * @return java.lang.String 文件后缀，带“.”，如果没有后缀，返回空字符串
+     * @author: HuaXian
+     * @date: 2023/12/28 18:24
+     */
     public static String getFileSuffix(String fileName) {
+        // 获取文件后缀,从后往前找，找到第一个“.”，截取后面的字符串
         Integer index = fileName.lastIndexOf(".");
+        // 如果没有找到“.”，返回空字符串
         if (index == -1) {
             return "";
         }
+        // 截取后面的字符串，包含“.”
         String suffix = fileName.substring(index);
         return suffix;
     }

@@ -198,33 +198,51 @@ public class FileInfoServiceImpl implements FileInfoService {
             // 如果能执行到这里证明是最后一个分片。最后一个分片上传完成，记录数据库，异步合成分片
             // 将date转换为字符串，格式为：yyyyMM，传入month中
             String month = DateUtil.format(curDate, DateTimePatternEnum.YYYYMM.getPattern());
-            // 使用StringTools工具类获取文件后缀，传入fileName，返回文件后缀
+            // 使用StringTools工具类获取文件后缀，传入fileName，返回文件后缀,带“.”
             String fileSuffix = StringTools.getFileSuffix(fileName);
             // 真实文件名为：用户Id + 文件Id + 文件后缀
             String realFileName = currentUserFolderName + fileSuffix;
             // 文件类型，根据文件后缀获取文件类型，fileTypeEnum，返回文件类型
             FileTypeEnums fileTypeEnum = FileTypeEnums.getFileTypeBySuffix(fileSuffix);
-            // 自动重命名
+            // 自动重命名 fileName = 文件名 + 随机字符串 + 后缀
             fileName = autoRename(filePid, webUserDto.getUserId(), fileName);
+            // 创建一个FileInfo对象，用于存储文件信息
             FileInfo fileInfo = new FileInfo();
+            // 将文件信息存入fileInfo中
             fileInfo.setFileId(fileId);
+            // 将用户Id存入fileInfo中
             fileInfo.setUserId(webUserDto.getUserId());
+            // 将文件MD5存入fileInfo中，MD5作用：1.防止重复上传，2.断点续传 3.文件完整性校验，防止文件损坏，4.文件秒传
             fileInfo.setFileMd5(fileMd5);
+            // 将文件名存入fileInfo中
             fileInfo.setFileName(fileName);
+            // 将文件路径存入fileInfo中，文件路径为：月份 + / + 真实文件名，只是路径，不是文件
             fileInfo.setFilePath(month + "/" + realFileName);
+            // 将文件父ID存入fileInfo中
             fileInfo.setFilePid(filePid);
+            // 将创建时间存入fileInfo中
             fileInfo.setCreateTime(curDate);
+            // 将最后更新时间存入fileInfo中
             fileInfo.setLastUpdateTime(curDate);
+            // 将文件类型存入fileInfo中，fileTypeEnum.getCategory()返回的是文件类型枚举中的文件类型(FileCategoryEnums)，FileCategoryEnums.getCategory()返回的1(视频)，2(音频)，3(图片)，4(文档)，5(其他)
             fileInfo.setFileCategory(fileTypeEnum.getCategory().getCategory());
+            // 将文件类型存入fileInfo中，fileTypeEnum.getType()返回的是具体文件格式，1(视频)，2(音频)，3(图片)，4(pdf)，5(word)，6(excel)，7(txt)，8(代码)，9(压缩包)，10(其他)
             fileInfo.setFileType(fileTypeEnum.getType());
+            // 将上传状态存入fileInfo中，FileStatusEnums.TRANSFER.getStatus()返回1（上传中），2（使用中），3（转码失败）
             fileInfo.setStatus(FileStatusEnums.TRANSFER.getStatus());
+            // 将文件属性存入fileInfo中，FileFolderTypeEnums.FILE.getType()返回1（文件），2（目录）
             fileInfo.setFolderType(FileFolderTypeEnums.FILE.getType());
+            // 将删除标记存入fileInfo中，FileDelFlagEnums.USING.getFlag()返回0（删除），1（使用中），2（回收站）
             fileInfo.setDelFlag(FileDelFlagEnums.USING.getFlag());
+            // 将文件信息插入数据库
             this.fileInfoMapper.insert(fileInfo);
 
+            // 获取本次上传的文件片大小
             Long totalSize = redisComponent.getFileTempSize(webUserDto.getUserId(), fileId);
+            // 更新用户空间使用的大小,传入Session中的信息和本次上传的文件片大小
             updateUserSpace(webUserDto, totalSize);
 
+            // 将文件状态设置为upload_finish(上传完成)，UploadStatusEnums.UPLOAD_FINISH.getCode()返回2（上传完成）
             resultDto.setStatus(UploadStatusEnums.UPLOAD_FINISH.getCode());
             // 事务提交后调用异步方法
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -254,23 +272,38 @@ public class FileInfoServiceImpl implements FileInfoService {
         }
     }
 
+    /**
+     * @description: TODO
+     * @param fileId
+     * @param webUserDto
+     * @return void
+     * @author: HuaXian
+     * @date: 2023/12/27 17:31
+     */
     @Override
     // @Async注解表明是异步执行，创建一个新的线程去执行下面方法
     @Async
     public void transferFile(String fileId, SessionWebUserDto webUserDto) {
+        // 转码标志，true表示转码成功，false表示转码失败
         Boolean transferSuccess = true;
+        // 目标文件路径
         String targetFilePath = null;
         // 文件封面
         String cover = null;
+        // 文件类型
         FileTypeEnums fileTypeEnum = null;
+        // 根据文件Id和用户Id查询文件信息
         FileInfo fileInfo = fileInfoMapper.selectByFileIdAndUserId(fileId, webUserDto.getUserId());
         try {
+            // 如果文件信息为空或者文件状态不是上传中，直接返回
             if (fileInfo == null || !FileStatusEnums.TRANSFER.getStatus().equals(fileInfo.getStatus())) {
                 return;
             }
-            // 临时目录
+            // 临时目录,配置文件中的projectFolder + / + /temp/  TODO 这里文件位置是不是有问题，多了/
             String tempFolderName = appConfig.getProjectFolder() + Constants.FILE_FOLDER_TEMP;
+            // 定义当前用户文件夹名，当前用户文件夹名为：用户Id + 文件Id
             String currentUserFolderName = webUserDto.getUserId() + fileId;
+            // 获取当前用户文件夹
             File fileFolder = new File(tempFolderName + currentUserFolderName);
             if (!fileFolder.exists()) {
                 /**
@@ -280,23 +313,27 @@ public class FileInfoServiceImpl implements FileInfoService {
                  */
                 fileFolder.mkdirs();
             }
-            // 文件后缀
+            // 获取文件后缀
             String fileSuffix = StringTools.getFileSuffix(fileInfo.getFileName());
+            // 将date转换为字符串，格式为：yyyyMM，传入month中
             String month = DateUtil.format(fileInfo.getCreateTime(), DateTimePatternEnum.YYYYMM.getPattern());
-            // 目标目录
+            // 目标目录,配置文件中的projectFolder + /  + /file/ TODO 这里文件位置是不是有问题，多了/
             String targetFolderName = appConfig.getProjectFolder() + Constants.FILE_FOLDER_FILE;
+            // 目标文件夹,目标文件夹为：配置文件中的projectFolder + /  + /file/ + / + 月份
             File targetFolder = new File(targetFolderName + "/" + month);
+            // 如果目标文件夹不存在，创建目标文件夹
             if (! targetFolder.exists()) {
                 targetFolder.mkdirs();
             }
-            // 真实文件名
+            // 真实文件名,真实文件名为：用户Id + 文件Id + 文件后缀
             String realFileName = currentUserFolderName + fileSuffix;
-            // 真实文件路径
+            // 真实文件路径,真实文件路径为：目标文件夹(targetFolder) + / + 真实文件名
             targetFilePath = targetFolder.getPath() + "/" + realFileName;
-            // 合并文件
+            // 合并文件,将临时目录中的文件合并成一个文件，合并后的文件路径为：目标文件夹(targetFolder) + / + 真实文件名
             union(fileFolder.getPath(), targetFilePath, fileInfo.getFileName(), true);
-            // 视频文件切割
+            // 通过getFileTypeBySuffix方法获取文件类型，传入文件后缀，返回文件类型
             fileTypeEnum = FileTypeEnums.getFileTypeBySuffix(fileSuffix);
+            // 如果文件类型是视频，调用cutFile4Video方法，传入文件Id和目标文件路径
             if (FileTypeEnums.VIDEO == fileTypeEnum) {
                 cutFile4Video(fileId, targetFilePath);
                 // 视频生成缩略图
@@ -319,70 +356,116 @@ public class FileInfoServiceImpl implements FileInfoService {
         }
     }
 
+    /**
+     * @description: 对视频进行切片保存
+     * @param fileId 文件Id
+     * @param videoFilePath 视频文件路径
+     * @return void
+     * @author: HuaXian
+     * @date: 2023/12/28 18:32
+     */
     private void cutFile4Video(String fileId, String videoFilePath) {
-        // 创建同名切片目录
+        // 创建同名切片目录，切片目录为：视频文件路径（videoFilePath）去掉后缀
         File tsFolder = new File(videoFilePath.substring(0, videoFilePath.lastIndexOf(".")));
+        // 如果切片目录不存在，创建切片目录
         if (!tsFolder.exists()) {
             tsFolder.mkdirs();
         }
+        // 定义一个CMD_TRANSFER_2TS，用于将视频文件转换成.ts文件，%s是占位符，第一个%s是视频文件路径，第二个%s是.ts文件路径
         final String CMD_TRANSFER_2TS = "ffmpeg -y -i %s  -vcodec copy -acodec copy -vbsf h264_mp4toannexb %s";
+        // 定义一个CMD_CUT_TS，用于将.ts文件切片，%s是占位符，第一个%s是.ts文件路径，第二个%s是索引文件路径，第三个%s是切片目录路径，第四个%s是文件Id
         final String CMD_CUT_TS = "ffmpeg -i %s -c copy -map 0 -f segment -segment_list %s -segment_time 30 %s/%s_%%4d.ts";
-
+        // 定义一个tsPath路径，tsPath为：切片目录路径（tsFolder.getPath()） + / + index.ts
         String tsPath = tsFolder + "/" + Constants.TS_NAME;
-        // 生成.ts
+        // 生成.ts,将视频文件转换成.ts文件，传入视频文件路径和.ts文件路径
         String cmd = String.format(CMD_TRANSFER_2TS, videoFilePath, tsPath);
+        // 执行cmd命令，ProcessUtils.executeCommand(cmd, false)返回的是执行结果，true表示执行成功，false表示执行失败
         ProcessUtils.executeCommand(cmd, false);
-        // 生成索引文件.m3u8和切片.ts
+        // 生成索引文件.m3u8和切片.ts,将.ts文件切片，传入.ts文件路径，索引文件路径，切片目录路径，文件Id
         cmd = String.format(CMD_CUT_TS, tsPath, tsFolder.getPath() + "/" + Constants.M3U8_NAME, tsFolder.getPath(), fileId);
+        // 执行cmd命令，ProcessUtils.executeCommand(cmd, false)返回的是执行结果，true表示执行成功，false表示执行失败
         ProcessUtils.executeCommand(cmd, false);
         // 删除index.ts
         new File(tsPath).delete();
     }
 
+    /**
+     * @description: TODO
+     * @param dirPath 当前用户目录路径
+     * @param toFilePath 合成后的文件路径
+     * @param fileName 文件名
+     * @param delSource 是否删除源文件
+     * @return void
+     * @author: HuaXian
+     * @date: 2023/12/27 17:58
+     */
     private void union(String dirPath, String toFilePath, String fileName, boolean delSource) {
+        // 获取当前用户的文件/目录，如果当前用户目录不存在，抛出异常“目录不存在”
         File dir = new File(dirPath);
         if (!dir.exists()) {
             throw new BusinessException("目录不存在");
         }
+        // 获取当前用户目录下的所有文件，存入fileList中
         File[] fileList = dir.listFiles();
+        // 根据toFilePath创建一个文件对象，命名为targetFile TODO 这里为什么不判断是否存在，不存在就创建
         File targetFile = new File(toFilePath);
+        // 创建一个RandomAccessFile对象，用于随机（任意）写入文件
         RandomAccessFile writeFile = null;
         try {
+            // 懒加载，使用的时候才创建，创建一个RandomAccessFile对象，可以读写（rw）
             writeFile = new RandomAccessFile(targetFile, "rw");
+            // 创建一个10M的字节数组
             byte[] b = new byte[1024 * 10];
+            // 遍历fileList，将每个文件读取到b中，然后写入targetFile中
             for (int i = 0; i < fileList.length; i++) {
+                // 创建一个int类型的变量，用于存储读取的字节数
                 int len = -1;
-                // 创建读块文件的对象
+                // 创建读块文件的对象,路径为：当前用户目录路径（dirPath） + /（File.separator会根据不同系统进行动态变化） + i
                 File chunkFile = new File(dirPath + File.separator + i);
+                // 创建一个RandomAccessFile对象，用于随机（任意）读取文件
                 RandomAccessFile readFile = null;
                 try {
+                    // 懒加载，使用的时候才创建，创建一个RandomAccessFile对象，只读（r）
                     readFile = new RandomAccessFile(chunkFile, "r");
+                    /**
+                     * 读写文件操作，具体逻辑如下：
+                     * 1.readFile.read(b)：将读取的文件存入b中，返回读取的字节数传入len中，如果读取的字节数为-1，说明读取完毕，跳出循环，每次while循环读取一个文件，且会覆盖上一次读取的文件
+                     * 2.writeFile.write(b, 0, len)：将b中的内容写入targetFile中，从0开始写，写入len个字节
+                     */
                     while ((len = readFile.read(b)) != -1) {
                         writeFile.write(b, 0, len);
                     }
                 } catch (Exception e) {
+                    // 如果读写文件失败，抛出异常
                     logger.error("合并分片失败", e);
                     throw new BusinessException("合并文件失败");
                 } finally {
+                    // 关闭流
                     readFile.close();
                 }
             }
         } catch (Exception e) {
+            // 如果合并文件失败，抛出异常
             logger.error("合并文件:{}失败", fileName, e);
             throw new BusinessException("合并文件" + fileName + "出错了");
         } finally {
             try {
+                // 关闭流
                 if (null != writeFile) {
                     writeFile.close();
                 }
             } catch (IOException e) {
+                // 如果关闭流失败，抛出异常
                 logger.error("关闭流失败", e);
             }
+            // 删除源文件,如果delSource为true，删除源文件
             if (delSource) {
+                // 判断当前用户目录是否存在，如果存在，删除当前用户目录
                 if (dir.exists()) {
                     try {
                         FileUtils.deleteDirectory(dir);
                     } catch (IOException e) {
+                        // 如果删除失败，抛出异常
                         e.printStackTrace();
                     }
                 }

@@ -8,19 +8,32 @@ import java.io.*;
 
 public class ProcessUtils {
     private static final Logger logger = LoggerFactory.getLogger(ProcessUtils.class);
+    /**
+     * @description: 执行FFmpeg命令
+     * @param cmd 需要执行的命令
+     * @param outprintLog 是否输出日志
+     * @return java.lang.String
+     * @author: HuaXian
+     * @date: 2023/12/28 21:50
+     */
     public static String executeCommand(String cmd, Boolean outprintLog) {
+        // 判断要执行的命令是否为空,如果为空，报错并返回null
         if (StringTools.isEmpty(cmd)) {
             logger.error("--- 指令执行失败，因为要执行的FFmpeg指令为空！ ---");
             return null;
         }
-
+        // 执行命令，通过Runtime.getRuntime()获取当前运行时环境，然后执行指令
+        /**
+         * 这里定义了Runtime runtime = Runtime.getRuntime();
+         * 后面的process = Runtime.getRuntime().exec(cmd);为什么不直接使用runtime？
+         */
         Runtime runtime = Runtime.getRuntime();
         Process process = null;
         try {
             process = Runtime.getRuntime().exec(cmd);
             // 执行ffmpeg指令
             // 取出输出流和错误流的信息
-            // 注意：必须要取出ffmpeg在执行命令过程中产生的输出信息，如果不取的话当输出流信息填满jvm存储输出留信息的缓冲区时，线程就回阻塞住
+            // 注意：必须取出ffmpeg在执行命令过程中产生的输出信息，如果不取的话当输出流信息填满jvm存储输出留信息的缓冲区时，线程就回阻塞住
             PrintStream errorStream = new PrintStream(process.getErrorStream());
             PrintStream inputStream = new PrintStream(process.getInputStream());
             errorStream.start();
@@ -56,18 +69,32 @@ public class ProcessUtils {
         BufferedReader bufferedReader = null;
         StringBuffer stringBuffer = new StringBuffer();
 
+        /**
+         * 构造方法
+         * @param inputStream 输入流
+         */
         public PrintStream(InputStream inputStream) {
             this.inputStream = inputStream;
         }
 
+        /**
+         * 重写run方法
+         */
         @Override
         public void run() {
             try {
+                // 如果输入流不为空，则开始读取
                 if (null == inputStream) {
                     return;
                 }
+                /**
+                 * InputStream inputStream是字节流对象，用于读取字节数据。
+                 * InputStreamReader inputStreamReader是字符流通向字节流的桥梁，将字节流转换为字符流，允许按字符读取字节数据。
+                 * BufferedReader bufferedReader是 Java 提供的缓冲字符输入流，它提供了一种更高效的方式来读取字符数据，通过缓冲可以减少对底层资源的访问次数，提高读取效率。
+                 */
                 bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
                 String line = null;
+                // 读取输入流中的内容
                 while ((line = bufferedReader.readLine()) != null) {
                     stringBuffer.append(line);
                 }
